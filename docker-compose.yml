@@ -1,0 +1,57 @@
+version: "3"
+
+services: 
+    rabbitmq:
+        hostname: rabbitmqserver
+        container_name: rabbitmqserver
+        image: rabbitmq:3-management-alpine
+        environment: 
+            - RABBITMQ_DEFAULT_USER=admin
+            - RABBITMQ_DEFAULT_PASS=qweqwe123
+        ports: 
+            - "5673:5672"
+            - "15673:15672"
+        networks:
+            - shared_network
+    app:
+        hostname: appserver
+        container_name: appserver
+        restart: on-failure
+        build:
+            context: .
+        image: app-image
+        ports: 
+            - "8100:8000"
+        volumes: 
+            - ./src:/src
+        command: >
+            sh -c "wait-for rabbitmq:5672 && python manage.py makemigrations && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+        depends_on: 
+            - rabbitmq
+        networks:
+            - shared_network
+    worker:
+        image: app-image
+        restart: on-failure
+        hostname: celery_worker
+        container_name: celery_worker
+        command: >
+            sh -c "wait-for app:8000 && celery -A app worker -l info -n worker"
+        depends_on: 
+            - app
+        networks:
+            - shared_network
+    celery_beat:
+        command: sh -c "wait-for app:8000 && celery -A app beat -l info --pidfile /tmp/celerybeat.pid"
+        container_name: celery_beat
+        hostname: celery_beat
+        depends_on:
+            - app
+        hostname: celery_beat
+        image: app-image
+        networks:
+            - shared_network
+        restart: on-failure
+networks:
+    shared_network:
+        driver: bridge
